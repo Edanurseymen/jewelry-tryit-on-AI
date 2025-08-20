@@ -1,0 +1,2697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Jewelry Try-On - Production Ready</title>
+    <!-- Three.js for 3D rendering -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+	
+	<!-- GLTFLoader eklentisi -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <!-- MediaPipe libraries for AI detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils@0.6/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            color: white;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: clamp(0.9rem, 2vw, 1.1rem);
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            gap: 1rem;
+            padding: 1rem;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .camera-section {
+            flex: 2;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-height: 500px;
+        }
+
+        .controls-section {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            height: fit-content;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .product-gallery {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        #videoElement {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        #canvasElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #threeCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .controls-group {
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 1rem;
+        }
+
+        .controls-group:last-child {
+            border-bottom: none;
+        }
+
+        .controls-group h3 {
+            color: white;
+            margin-bottom: 1rem;
+            font-size: clamp(1rem, 3vw, 1.3rem);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .jewelry-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 0.8rem;
+            margin-bottom: 1rem;
+        }
+
+        .jewelry-item {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 0.8rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+            font-size: 0.9rem;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .jewelry-item:hover, .jewelry-item:active {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #4facfe;
+            transform: scale(1.02);
+        }
+
+        .jewelry-item.active {
+            background: rgba(79, 172, 254, 0.3);
+            border-color: #4facfe;
+            box-shadow: 0 0 15px rgba(79, 172, 254, 0.4);
+        }
+
+        .jewelry-item .icon {
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            margin-bottom: 0.3rem;
+            display: block;
+        }
+
+        .color-options {
+            display: flex;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+
+        .color-option {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.3s ease;
+            position: relative;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .color-option:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .color-option.active {
+            border-color: white;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+        }
+
+        .color-option.gold { background: linear-gradient(45deg, #FFD700, #FFA500); }
+        .color-option.silver { background: linear-gradient(45deg, #C0C0C0, #E5E5E5); }
+        .color-option.rose-gold { background: linear-gradient(45deg, #E8B4B8, #D4A574); }
+        .color-option.platinum { background: linear-gradient(45deg, #E5E4E2, #BCC6CC); }
+
+        .control-slider {
+            width: 100%;
+            margin: 1rem 0;
+            -webkit-appearance: none;
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            position: relative;
+        }
+
+        .control-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(79, 172, 254, 0.5);
+        }
+
+        .control-slider::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 10px rgba(79, 172, 254, 0.5);
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .slider-value {
+            background: rgba(79, 172, 254, 0.3);
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 0.8rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            color: white;
+        }
+
+        .btn-primary:hover, .btn-primary:active {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-secondary:hover, .btn-secondary:active {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-success {
+            background: linear-gradient(45deg, #56ab2f, #a8e6cf);
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            text-align: center;
+            font-size: 0.9rem;
+            border-left: 4px solid #4facfe;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: white;
+            margin-top: 1rem;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .file-upload-container {
+            position: relative;
+            margin-top: 0.5rem;
+        }
+
+        .file-upload {
+            width: 100%;
+            padding: 0.8rem;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: 2px dashed rgba(255,255,255,0.3);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-upload:hover {
+            border-color: #4facfe;
+            background: rgba(79, 172, 254, 0.1);
+        }
+
+        .file-upload input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        /* Product Gallery Styles */
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .product-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .product-card:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #4facfe;
+            transform: translateY(-5px);
+        }
+
+        .product-card.selected {
+            border-color: #4facfe;
+            box-shadow: 0 0 15px rgba(79, 172, 254, 0.4);
+        }
+
+        .product-image {
+            width: 100%;
+            height: 120px;
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .product-name {
+            color: white;
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 0.3rem;
+        }
+
+        .product-price {
+            color: #4facfe;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .product-description {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.8rem;
+            margin-top: 0.3rem;
+        }
+
+        /* Saved Photos Gallery */
+        .photos-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .saved-photo {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .saved-photo:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .saved-photo img {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 0.3rem;
+        }
+
+        .photo-date {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.7rem;
+        }
+
+        /* Performance Indicator */
+        .performance-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 0.5rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            z-index: 1000;
+            display: none;
+        }
+
+        .performance-indicator.show {
+            display: block;
+        }
+
+        /* Advanced Filter Panel */
+        .filter-panel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-chip {
+            background: rgba(79, 172, 254, 0.3);
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .filter-chip:hover {
+            background: rgba(79, 172, 254, 0.5);
+            transform: scale(1.05);
+        }
+
+        .filter-chip.active {
+            border-color: white;
+            background: rgba(79, 172, 254, 0.6);
+        }
+
+        /* Wishlist & Cart */
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .btn-mini {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.7rem;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-wishlist {
+            background: rgba(255, 107, 107, 0.8);
+            color: white;
+        }
+
+        .btn-cart {
+            background: rgba(72, 187, 120, 0.8);
+            color: white;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+                padding: 0.5rem;
+                gap: 0.5rem;
+            }
+
+            .camera-section, .controls-section, .product-gallery {
+                padding: 1rem;
+            }
+            
+            .jewelry-options {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 0.5rem;
+            }
+
+            .jewelry-item {
+                padding: 0.5rem;
+                font-size: 0.8rem;
+            }
+            
+            .control-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                min-width: auto;
+            }
+
+            .color-options {
+                justify-content: center;
+            }
+
+            .color-option {
+                width: 35px;
+                height: 35px;
+            }
+
+            .product-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.5rem;
+            }
+
+            .controls-section {
+                max-height: none;
+                order: 2;
+            }
+
+            .camera-section {
+                order: 1;
+                min-height: 400px;
+            }
+
+            .product-gallery {
+                order: 3;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header {
+                padding: 0.8rem;
+            }
+
+            .jewelry-options {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .jewelry-item .icon {
+                font-size: 1.5rem;
+            }
+
+            .controls-group {
+                margin-bottom: 1rem;
+                padding-bottom: 0.8rem;
+            }
+
+            .product-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Premium Effects */
+        .premium-glow {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .premium-glow::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, #4facfe, #00f2fe, #4facfe);
+            border-radius: inherit;
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .premium-glow.active::before {
+            opacity: 1;
+        }
+
+        /* Notifications */
+        .notification {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 5px 25px rgba(79, 172, 254, 0.3);
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+            max-width: 300px;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification-close {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✨ Virtual Jewelry Try-On</h1>
+        <p>Experience jewelry like never before with AI-powered 3D virtual try-on</p>
+    </div>
+
+    <!-- Performance Indicator -->
+    <div class="performance-indicator" id="performanceIndicator">
+        FPS: <span id="fpsDisplay">0</span> | Memory: <span id="memoryDisplay">0MB</span>
+    </div>
+
+    <!-- Notification System -->
+    <div class="notification" id="notification">
+        <button class="notification-close" onclick="hideNotification()">×</button>
+        <div id="notificationContent"></div>
+    </div>
+
+    <div class="main-container">
+        <div class="camera-section">
+            <div class="camera-container">
+                <video id="videoElement" autoplay muted playsinline></video>
+                <canvas id="canvasElement"></canvas>
+                <canvas id="threeCanvas"></canvas>
+            </div>
+            <div class="loading" id="loadingIndicator">
+                <p>🔍 Initializing AI detection systems...</p>
+            </div>
+            <div class="status" id="status">
+                🎹 Click "Start Camera" to begin your virtual jewelry experience
+            </div>
+        </div>
+
+        <div class="controls-section">
+            <div class="controls-group">
+                <h3>👑 Choose Jewelry</h3>
+                <div class="jewelry-options">
+                    <div class="jewelry-item premium-glow" data-type="earrings" onclick="selectJewelry('earrings')">
+                        <span class="icon">💎</span>
+                        <div>Earrings</div>
+                    </div>
+                    <div class="jewelry-item" data-type="necklace" onclick="selectJewelry('necklace')">
+                        <span class="icon">📿</span>
+                        <div>Necklace</div>
+                    </div>
+                    <div class="jewelry-item" data-type="rings" onclick="selectJewelry('rings')">
+                        <span class="icon">💍</span>
+                        <div>Rings</div>
+                    </div>
+                    <div class="jewelry-item" data-type="tiara" onclick="selectJewelry('tiara')">
+                        <span class="icon">👑</span>
+                        <div>Tiara</div>
+                    </div>
+                    <div class="jewelry-item" data-type="bracelet" onclick="selectJewelry('bracelet')">
+                        <span class="icon">⌚</span>
+                        <div>Bracelet</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls-group">
+                <h3>💎 Collections & Materials</h3>
+                <select id="jewelryStyle" onchange="changeJewelryStyle()" style="width: 100%; padding: 0.8rem; border-radius: 8px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3); margin-bottom: 1rem; font-size: 0.9rem;">
+                    <option value="classic">Classic Elegance</option>
+                    <option value="modern">Modern Luxury</option>
+                    <option value="vintage">Vintage Romance</option>
+                    <option value="minimalist">Minimalist Chic</option>
+                </select>
+                
+                <div class="color-options">
+                    <div class="color-option gold active" data-color="gold" onclick="changeJewelryColor('gold')" title="24K Gold"></div>
+                    <div class="color-option silver" data-color="silver" onclick="changeJewelryColor('silver')" title="Sterling Silver"></div>
+                    <div class="color-option rose-gold" data-color="rose-gold" onclick="changeJewelryColor('rose-gold')" title="Rose Gold"></div>
+                    <div class="color-option platinum" data-color="platinum" onclick="changeJewelryColor('platinum')" title="Platinum"></div>
+                </div>
+            </div>
+
+            <div class="controls-group">
+                <h3>🎛️ Precision Adjustments</h3>
+                
+                <div class="slider-label">
+                    <span>Size:</span>
+                    <span class="slider-value" id="sizeValue">100%</span>
+                </div>
+                <input type="range" class="control-slider" id="sizeSlider" min="50" max="200" value="100" oninput="adjustSize(this.value)" ontouchmove="adjustSize(this.value)">
+                
+                <div class="slider-label">
+                    <span>Opacity:</span>
+                    <span class="slider-value" id="opacityValue">85%</span>
+                </div>
+                <input type="range" class="control-slider" id="opacitySlider" min="20" max="100" value="85" oninput="adjustOpacity(this.value)" ontouchmove="adjustOpacity(this.value)">
+                
+                <div class="slider-label">
+                    <span>Brightness:</span>
+                    <span class="slider-value" id="brightnessValue">100%</span>
+                </div>
+                <input type="range" class="control-slider" id="brightnessSlider" min="50" max="150" value="100" oninput="adjustBrightness(this.value)" ontouchmove="adjustBrightness(this.value)">
+            </div>
+
+            <div class="control-buttons">
+                <button class="btn btn-primary" onclick="startCamera()" id="cameraBtn">🎹 Start Camera</button>
+                <button class="btn btn-secondary" onclick="capturePhoto()" id="captureBtn" disabled>📸 Capture</button>
+            </div>
+
+            <div class="controls-group">
+                <h3>📁 Upload Your Photo</h3>
+                <div class="file-upload-container">
+                    <div class="file-upload">
+                        <input type="file" accept="image/*" onchange="handleFileUpload(event)">
+                        📤 Tap to upload photo
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls-group">
+                <h3>📸 Saved Photos</h3>
+                <div class="photos-gallery" id="photosGallery">
+                    <!-- Saved photos will be displayed here -->
+                </div>
+                <button class="btn btn-secondary" onclick="clearSavedPhotos()" style="width: 100%; margin-top: 0.5rem;">🗑️ Clear All Photos</button>
+            </div>
+
+            <div class="controls-group">
+                <h3>🔧 Advanced Features</h3>
+                <button class="btn btn-secondary" onclick="resetToDefaults()" style="width: 100%; margin-bottom: 0.5rem;">🔄 Reset Settings</button>
+                <button class="btn btn-secondary" onclick="toggleMirrorMode()" id="mirrorBtn" style="width: 100%; margin-bottom: 0.5rem;">🪞 Mirror Mode</button>
+                <button class="btn btn-secondary" onclick="togglePerformanceMonitor()" id="perfBtn" style="width: 100%;">📊 Performance Monitor</button>
+            </div>
+        </div>
+
+        <div class="product-gallery">
+            <div class="controls-group">
+                <h3>🛍️ Product Catalog</h3>
+                
+                <div class="filter-panel">
+                    <h4 style="color: white; margin-bottom: 0.5rem;">Filter by Category:</h4>
+                    <div class="filter-row">
+                        <div class="filter-chip active" data-filter="all" onclick="filterProducts('all')">All</div>
+                        <div class="filter-chip" data-filter="earrings" onclick="filterProducts('earrings')">Earrings</div>
+                        <div class="filter-chip" data-filter="necklace" onclick="filterProducts('necklace')">Necklaces</div>
+                        <div class="filter-chip" data-filter="rings" onclick="filterProducts('rings')">Rings</div>
+                        <div class="filter-chip" data-filter="tiara" onclick="filterProducts('tiara')">Tiaras</div>
+                        <div class="filter-chip" data-filter="bracelet" onclick="filterProducts('bracelet')">Bracelets</div>
+                    </div>
+                    
+                    <h4 style="color: white; margin-bottom: 0.5rem; margin-top: 1rem;">Price Range:</h4>
+                    <div class="filter-row">
+                        <div class="filter-chip" data-price="under100" onclick="filterByPrice('under100')">Under $100</div>
+                        <div class="filter-chip" data-price="100-500" onclick="filterByPrice('100-500')">$100-500</div>
+                        <div class="filter-chip" data-price="over500" onclick="filterByPrice('over500')">Over $500</div>
+                    </div>
+                </div>
+                
+                <div class="product-grid" id="productGrid">
+                    <!-- Products will be loaded dynamically -->
+                </div>
+            </div>
+            
+            <div class="controls-group">
+                <h3>💝 Wishlist & Cart</h3>
+                <div id="wishlistItems" style="margin-bottom: 1rem;">
+                    <p style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Add items to your wishlist by clicking the heart icon</p>
+                </div>
+                <div id="cartItems">
+                    <p style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Add items to cart for purchase</p>
+                </div>
+                <button class="btn btn-success" onclick="checkout()" id="checkoutBtn" disabled style="width: 100%; margin-top: 1rem;">🛒 Checkout ($0.00)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === ENHANCED PRODUCT DATABASE SIMULATION ===
+        const PRODUCT_DATABASE = {
+            earrings: [
+                {
+                    id: 'e001',
+                    name: 'Diamond Drops',
+                    price: 299.99,
+                    category: 'earrings',
+                    style: 'classic',
+                    material: 'gold',
+                    description: 'Elegant diamond drop earrings',
+                    inStock: true,
+                    rating: 4.8,
+                    reviews: 156
+                },
+                {
+                    id: 'e002',
+                    name: 'Modern Hoops',
+                    price: 189.99,
+                    category: 'earrings',
+                    style: 'modern',
+                    material: 'silver',
+                    description: 'Contemporary hoop earrings',
+                    inStock: true,
+                    rating: 4.6,
+                    reviews: 89
+                },
+                {
+                    id: 'e003',
+                    name: 'Vintage Pearls',
+                    price: 449.99,
+                    category: 'earrings',
+                    style: 'vintage',
+                    material: 'rose-gold',
+                    description: 'Vintage-inspired pearl earrings',
+                    inStock: false,
+                    rating: 4.9,
+                    reviews: 234
+                },
+                {
+                    id: 'e004',
+                    name: 'Minimal Studs',
+                    price: 89.99,
+                    category: 'earrings',
+                    style: 'minimalist',
+                    material: 'platinum',
+                    description: 'Simple elegant studs',
+                    inStock: true,
+                    rating: 4.7,
+                    reviews: 67
+                }
+            ],
+            necklace: [
+                {
+                    id: 'n001',
+                    name: 'Classic Chain',
+                    price: 599.99,
+                    category: 'necklace',
+                    style: 'classic',
+                    material: 'gold',
+                    description: 'Timeless gold chain necklace',
+                    inStock: true,
+                    rating: 4.8,
+                    reviews: 203
+                },
+                {
+                    id: 'n002',
+                    name: 'Geometric Pendant',
+                    price: 349.99,
+                    category: 'necklace',
+                    style: 'modern',
+                    material: 'silver',
+                    description: 'Modern geometric design',
+                    inStock: true,
+                    rating: 4.5,
+                    reviews: 112
+                },
+                {
+                    id: 'n003',
+                    name: 'Heart Locket',
+                    price: 799.99,
+                    category: 'necklace',
+                    style: 'vintage',
+                    material: 'rose-gold',
+                    description: 'Romantic heart-shaped locket',
+                    inStock: true,
+                    rating: 4.9,
+                    reviews: 288
+                },
+                {
+                    id: 'n004',
+                    name: 'Simple Bar',
+                    price: 129.99,
+                    category: 'necklace',
+                    style: 'minimalist',
+                    material: 'platinum',
+                    description: 'Clean minimalist bar necklace',
+                    inStock: true,
+                    rating: 4.6,
+                    reviews: 95
+                }
+            ],
+            rings: [
+                {
+                    id: 'r001',
+                    name: 'Solitaire Diamond',
+                    price: 1299.99,
+                    category: 'rings',
+                    style: 'classic',
+                    material: 'gold',
+                    description: 'Classic solitaire engagement ring',
+                    inStock: true,
+                    rating: 4.9,
+                    reviews: 445
+                },
+                {
+                    id: 'r002',
+                    name: 'Geometric Band',
+                    price: 299.99,
+                    category: 'rings',
+                    style: 'modern',
+                    material: 'silver',
+                    description: 'Modern geometric wedding band',
+                    inStock: true,
+                    rating: 4.7,
+                    reviews: 178
+                },
+                {
+                    id: 'r003',
+                    name: 'Vintage Rose',
+                    price: 899.99,
+                    category: 'rings',
+                    style: 'vintage',
+                    material: 'rose-gold',
+                    description: 'Vintage-inspired rose design',
+                    inStock: false,
+                    rating: 4.8,
+                    reviews: 267
+                },
+                {
+                    id: 'r004',
+                    name: 'Thin Band',
+                    price: 149.99,
+                    category: 'rings',
+                    style: 'minimalist',
+                    material: 'platinum',
+                    description: 'Delicate thin band ring',
+                    inStock: true,
+                    rating: 4.5,
+                    reviews: 89
+                }
+            ],
+            tiara: [
+                {
+                    id: 't001',
+                    name: 'Royal Crown',
+                    price: 2999.99,
+                    category: 'tiara',
+                    style: 'classic',
+                    material: 'gold',
+                    description: 'Majestic royal tiara with crystals',
+                    inStock: true,
+                    rating: 5.0,
+                    reviews: 23
+                },
+                {
+                    id: 't002',
+                    name: 'Angular Crown',
+                    price: 1899.99,
+                    category: 'tiara',
+                    style: 'modern',
+                    material: 'silver',
+                    description: 'Contemporary angular tiara design',
+                    inStock: true,
+                    rating: 4.6,
+                    reviews: 15
+                },
+                {
+                    id: 't003',
+                    name: 'Victorian Style',
+                    price: 3499.99,
+                    category: 'tiara',
+                    style: 'vintage',
+                    material: 'rose-gold',
+                    description: 'Ornate Victorian-era inspired tiara',
+                    inStock: false,
+                    rating: 4.9,
+                    reviews: 31
+                }
+            ],
+            bracelet: [
+                {
+                    id: 'b001',
+                    name: 'Tennis Bracelet',
+                    price: 799.99,
+                    category: 'bracelet',
+                    style: 'classic',
+                    material: 'gold',
+                    description: 'Classic diamond tennis bracelet',
+                    inStock: true,
+                    rating: 4.8,
+                    reviews: 189
+                },
+                {
+                    id: 'b002',
+                    name: 'Link Chain',
+                    price: 399.99,
+                    category: 'bracelet',
+                    style: 'modern',
+                    material: 'silver',
+                    description: 'Modern chunky link bracelet',
+                    inStock: true,
+                    rating: 4.5,
+                    reviews: 134
+                },
+                {
+                    id: 'b003',
+                    name: 'Charm Bracelet',
+                    price: 649.99,
+                    category: 'bracelet',
+                    style: 'vintage',
+                    material: 'rose-gold',
+                    description: 'Vintage charm bracelet collection',
+                    inStock: true,
+                    rating: 4.7,
+                    reviews: 156
+                },
+                {
+                    id: 'b004',
+                    name: 'Cuff Bracelet',
+                    price: 199.99,
+                    category: 'bracelet',
+                    style: 'minimalist',
+                    material: 'platinum',
+                    description: 'Simple elegant cuff bracelet',
+                    inStock: true,
+                    rating: 4.6,
+                    reviews: 78
+                }
+            ]
+        };
+
+        // Enhanced Application State with Production Features
+        let faceMesh, hands, camera, videoElement, canvasElement, canvasCtx, threeCanvas;
+        let scene, renderer, threeCamera, jewelryMeshes = [], ambientLight, directionalLight;
+        
+		// Yeni eklenen global değişkenler
+		let ringModel = null; // Yüklenen yüzük modelini bu değişkende saklayacağız
+        let gltfLoader = null; // .glb dosyalarını yüklemek için bu aracı kullanacağız
+        
+		// Core state
+        let currentJewelry = 'earrings';
+        let currentStyle = 'classic';
+        let currentColor = 'gold';
+        let currentProductId = null;
+        let jewelrySize = 100;
+        let jewelryOpacity = 85;
+        let jewelryBrightness = 100;
+        let isMirrorMode = false;
+        
+        // Detection state
+        let faceDetected = false;
+        let handsDetected = false;
+        let landmarks = null;
+        let handLandmarks = null;
+
+        // Production features state
+        let savedPhotos = JSON.parse(localStorage.getItem('jewelryTryOnPhotos') || '[]');
+        let wishlist = JSON.parse(localStorage.getItem('jewelryWishlist') || '[]');
+        let cart = JSON.parse(localStorage.getItem('jewelryCart') || '[]');
+        let userPreferences = JSON.parse(localStorage.getItem('jewelryPreferences') || '{}');
+        
+        // Performance monitoring
+        let performanceMonitor = {
+            enabled: false,
+            frameCount: 0,
+            lastTime: performance.now(),
+            fps: 0,
+            memoryUsage: 0
+        };
+
+        // Material library for enhanced 3D rendering
+        const materialLibrary = {
+            gold: { color: 0xFFD700, metalness: 0.9, roughness: 0.1, emissive: 0x221100 },
+            silver: { color: 0xC0C0C0, metalness: 0.95, roughness: 0.05, emissive: 0x111111 },
+            'rose-gold': { color: 0xE8B4B8, metalness: 0.9, roughness: 0.1, emissive: 0x221111 },
+            platinum: { color: 0xE5E4E2, metalness: 0.95, roughness: 0.03, emissive: 0x111111 }
+        };
+
+        /**
+        * Enhanced initialization with library loading check
+        */
+        function init() {
+            console.log('🚀 Initializing Virtual Jewelry Try-On App - Production Ready');
+    
+            // Get DOM elements
+            videoElement = document.getElementById('videoElement');
+            canvasElement = document.getElementById('canvasElement');
+            canvasCtx = canvasElement.getContext('2d');
+            threeCanvas = document.getElementById('threeCanvas');
+    
+            // Check if MediaPipe libraries are loaded
+            const mediaPipeLoaded = (typeof FaceMesh !== 'undefined' && typeof Hands !== 'undefined');
+    
+            if (mediaPipeLoaded) {
+                console.log('✅ MediaPipe libraries loaded successfully');
+                // Initialize AI systems
+                initializeFaceMesh();
+                initializeHands();
+            } else {
+                console.warn('⚠️ MediaPipe libraries not loaded. Running in basic mode.');
+                document.getElementById('loadingIndicator').innerHTML = '<p>⚠️ AI detection unavailable. Basic camera mode active.</p>';
+                setTimeout(() => {
+                    document.getElementById('loadingIndicator').classList.remove('show');
+                    updateStatus('📹 Basic mode ready - Click "Start Camera" to continue');
+                }, 2000);
+            }
+    
+            // Initialize Three.js and other features
+            initializeThreeJS();
+            setupResponsiveCanvas();
+    
+            // Initialize production features
+            loadProducts();
+            displaySavedPhotos();
+            updateWishlistDisplay();
+            updateCartDisplay();
+    
+            // Load user preferences
+            loadUserPreferences();
+    
+            console.log('✅ Application initialized successfully');
+        }
+ /**
+ * Start camera function
+ */
+function startCamera() {
+    const cameraBtn = document.getElementById('cameraBtn');
+    const captureBtn = document.getElementById('captureBtn');
+    const status = document.getElementById('status');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    
+    cameraBtn.disabled = true;
+    cameraBtn.textContent = '🔄 Starting...';
+    loadingIndicator.classList.add('show');
+    
+    navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            width: 640, 
+            height: 480, 
+            facingMode: 'user' 
+        } 
+    })
+    .then(stream => {
+        videoElement.srcObject = stream;
+        videoElement.onloadedmetadata = () => {
+            setupResponsiveCanvas();
+            startDetection();
+            
+            cameraBtn.textContent = '📹 Camera Active';
+            cameraBtn.disabled = false;
+            captureBtn.disabled = false;
+            loadingIndicator.classList.remove('show');
+            updateStatus('✨ Camera active! Position yourself in frame');
+        };
+    })
+    .catch(error => {
+        console.error('Camera error:', error);
+        cameraBtn.textContent = '📹 Start Camera';
+        cameraBtn.disabled = false;
+        loadingIndicator.classList.remove('show');
+        updateStatus('❌ Camera access denied. Please allow camera permissions.');
+        showNotification('Camera access required for virtual try-on', 'error');
+    });
+}
+
+/**
+ * Start detection systems
+ */
+function startDetection() {
+    if (faceMesh && hands && videoElement.videoWidth > 0) {
+        processFrame();
+    }
+}
+
+/**
+ * Process video frame
+ */
+function processFrame() {
+    if (videoElement.videoWidth > 0) {
+        faceMesh.send({ image: videoElement });
+        hands.send({ image: videoElement });
+    }
+    requestAnimationFrame(processFrame);
+}
+
+/**
+ * Setup responsive canvas
+ */
+function setupResponsiveCanvas() {
+    if (videoElement.videoWidth && videoElement.videoHeight) {
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        
+        // Update Three.js canvas size
+        const aspect = videoElement.videoWidth / videoElement.videoHeight;
+        threeCamera.aspect = aspect;
+        threeCamera.updateProjectionMatrix();
+        renderer.setSize(videoElement.videoWidth, videoElement.videoHeight);
+    }
+}
+
+/**
+ * Update status message
+ */
+function updateStatus(message) {
+    document.getElementById('status').innerHTML = message;
+}
+
+/**
+ * Draw earrings
+ */
+function drawEarrings(landmarks, width, height) {
+    if (!landmarks) return;
+    
+    const leftEar = landmarks[234]; // Left ear landmark
+    const rightEar = landmarks[454]; // Right ear landmark
+    
+    const earringSize = (jewelrySize / 100) * 30;
+    
+    // Draw left earring
+    drawJewelryShape(
+        leftEar.x * width, 
+        leftEar.y * height + 20, 
+        earringSize, 
+        'earring'
+    );
+    
+    // Draw right earring
+    drawJewelryShape(
+        rightEar.x * width, 
+        rightEar.y * height + 20, 
+        earringSize, 
+        'earring'
+    );
+}
+
+/**
+ * Draw jewelry shape
+ */
+function drawJewelryShape(x, y, size, type) {
+    const gradient = canvasCtx.createRadialGradient(x, y, 0, x, y, size);
+    
+    switch(currentColor) {
+        case 'gold':
+            gradient.addColorStop(0, '#FFD700');
+            gradient.addColorStop(1, '#B8860B');
+            break;
+        case 'silver':
+            gradient.addColorStop(0, '#E5E5E5');
+            gradient.addColorStop(1, '#A0A0A0');
+            break;
+        case 'rose-gold':
+            gradient.addColorStop(0, '#E8B4B8');
+            gradient.addColorStop(1, '#D4A574');
+            break;
+        case 'platinum':
+            gradient.addColorStop(0, '#E5E4E2');
+            gradient.addColorStop(1, '#BCC6CC');
+            break;
+    }
+    
+    canvasCtx.fillStyle = gradient;
+    canvasCtx.beginPath();
+    canvasCtx.arc(x, y, size, 0, 2 * Math.PI);
+    canvasCtx.fill();
+    
+    // Add sparkle effect
+    canvasCtx.fillStyle = `rgba(255, 255, 255, ${jewelryOpacity / 200})`;
+    canvasCtx.beginPath();
+    canvasCtx.arc(x - size/3, y - size/3, size/4, 0, 2 * Math.PI);
+    canvasCtx.fill();
+}
+
+/**
+ * Select jewelry type
+ */
+function selectJewelry(type) {
+    currentJewelry = type;
+    currentProductId = null;
+    
+    // Update UI
+    document.querySelectorAll('.jewelry-item').forEach(item => {
+        item.classList.remove('active', 'premium-glow');
+        if (item.dataset.type === type) {
+            item.classList.add('active', 'premium-glow');
+        }
+    });
+    
+    // Clear product selection
+    document.querySelectorAll('.product-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    updateStatus(`💎 Selected: ${type.charAt(0).toUpperCase() + type.slice(1)}`);
+    showNotification(`Now trying: ${type}`, 'info');
+}
+
+/**
+ * Filter products function (already exists but may be incomplete)
+ */
+function filterProducts(category) {
+    const productCards = document.querySelectorAll('.product-card');
+    const filterChips = document.querySelectorAll('.filter-chip[data-filter]');
+    
+    // Update active filter chip
+    filterChips.forEach(chip => chip.classList.remove('active'));
+    document.querySelector(`[data-filter="${category}"]`).classList.add('active');
+    
+    // Show/hide products
+    productCards.forEach(card => {
+        if (category === 'all' || card.dataset.category === category) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+        /**
+         * Load and display products from database
+         */
+        function loadProducts() {
+            const productGrid = document.getElementById('productGrid');
+            productGrid.innerHTML = '';
+            
+            // Get all products from database
+            const allProducts = [];
+            Object.values(PRODUCT_DATABASE).forEach(category => {
+                allProducts.push(...category);
+            });
+            
+            let total = 0;
+            
+            const cartHTML = cart.map(cartItem => {
+                const product = allProducts.find(p => p.id === cartItem.id);
+                if (!product) return '';
+                
+                const itemTotal = product.price * cartItem.quantity;
+                total += itemTotal;
+                
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.1); padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem;">
+                        <div>
+                            <div style="color: white; font-size: 0.8rem; font-weight: bold;">${product.name}</div>
+                            <div style="color: #4facfe; font-size: 0.7rem;">${product.price} × ${cartItem.quantity}</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <button onclick="updateCartQuantity('${product.id}', -1)" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 0.7rem;">−</button>
+                            <span style="color: white; font-size: 0.8rem; min-width: 20px; text-align: center;">${cartItem.quantity}</span>
+                            <button onclick="updateCartQuantity('${product.id}', 1)" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 0.7rem;">+</button>
+                            <button onclick="removeFromCart('${product.id}')" style="background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 0.8rem;" title="Remove">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            cartContainer.innerHTML = cartHTML;
+            checkoutBtn.disabled = false;
+            checkoutBtn.textContent = `🛒 Checkout (${total.toFixed(2)})`;
+        }
+
+        /**
+         * Update cart item quantity
+         */
+        function updateCartQuantity(productId, change) {
+            const cartItem = cart.find(item => item.id === productId);
+            if (!cartItem) return;
+            
+            cartItem.quantity += change;
+            
+            if (cartItem.quantity <= 0) {
+                removeFromCart(productId);
+                return;
+            }
+            
+            localStorage.setItem('jewelryCart', JSON.stringify(cart));
+            updateCartDisplay();
+        }
+
+        /**
+         * Remove item from cart
+         */
+        function removeFromCart(productId) {
+            cart = cart.filter(item => item.id !== productId);
+            localStorage.setItem('jewelryCart', JSON.stringify(cart));
+            updateCartDisplay();
+            showNotification('Item removed from cart', 'info');
+        }
+
+        /**
+         * Checkout simulation
+         */
+        function checkout() {
+            if (cart.length === 0) return;
+            
+            const allProducts = [];
+            Object.values(PRODUCT_DATABASE).forEach(category => {
+                allProducts.push(...category);
+            });
+            
+            let total = 0;
+            const orderItems = cart.map(cartItem => {
+                const product = allProducts.find(p => p.id === cartItem.id);
+                if (product) {
+                    total += product.price * cartItem.quantity;
+                    return `${product.name} × ${cartItem.quantity} - ${(product.price * cartItem.quantity).toFixed(2)}`;
+                }
+                return '';
+            }).filter(item => item);
+            
+            if (confirm(`Complete your purchase?\n\nTotal: ${total.toFixed(2)}\n\n(Demo mode - no actual payment will be processed)`)) {
+                // Simulate successful checkout
+                const orderNumber = 'ORD-' + Date.now();
+                
+                // Save order to user history
+                const orders = JSON.parse(localStorage.getItem('jewelryOrders') || '[]');
+                orders.unshift({
+                    orderNumber,
+                    items: cart.slice(),
+                    total,
+                    timestamp: new Date().toISOString(),
+                    status: 'confirmed'
+                });
+                localStorage.setItem('jewelryOrders', JSON.stringify(orders));
+                
+                // Clear cart
+                cart = [];
+                localStorage.setItem('jewelryCart', JSON.stringify(cart));
+                updateCartDisplay();
+                
+                showNotification(`🎉 Order ${orderNumber} confirmed! Thank you for your purchase.`, 'success');
+                
+                // Show success modal
+                setTimeout(() => {
+                    showOrderConfirmation(orderNumber, total);
+                }, 1000);
+            }
+        }
+
+        /**
+         * Show order confirmation modal
+         */
+        function showOrderConfirmation(orderNumber, total) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.8); z-index: 10000; display: flex;
+                align-items: center; justify-content: center; padding: 2rem;
+            `;
+            
+            modal.innerHTML = `
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 15px; padding: 2rem; max-width: 400px; text-align: center;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">🎉</div>
+                    <h3 style="margin-bottom: 1rem;">Order Confirmed!</h3>
+                    <p style="margin-bottom: 0.5rem;"><strong>Order #:</strong> ${orderNumber}</p>
+                    <p style="margin-bottom: 1.5rem;"><strong>Total:</strong> ${total.toFixed(2)}</p>
+                    <p style="font-size: 0.9rem; margin-bottom: 2rem; opacity: 0.9;">
+                        Your jewelry will be delivered within 3-5 business days. 
+                        You'll receive tracking information via email.
+                    </p>
+                    <button onclick="this.parentElement.parentElement.remove()" 
+                            style="background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 0.8rem 2rem; border-radius: 25px; cursor: pointer; font-weight: bold;">
+                        Continue Shopping
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Auto-close after 10 seconds
+            setTimeout(() => {
+                if (modal.parentElement) modal.remove();
+            }, 10000);
+        }
+
+        /**
+         * Filter products by category
+         */
+        function filterProducts(category) {
+            const productCards = document.querySelectorAll('.product-card');
+            const filterChips = document.querySelectorAll('.filter-chip[data-filter]');
+            
+            // Update active filter chip
+            filterChips.forEach(chip => chip.classList.remove('active'));
+            document.querySelector(`[data-filter="${category}"]`).classList.add('active');
+            
+            // Show/hide products
+            productCards.forEach(card => {
+                if (category === 'all' || card.dataset.category === category) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        /**
+         * Filter products by price range
+         */
+        function filterByPrice(priceRange) {
+            const productCards = document.querySelectorAll('.product-card');
+            
+            productCards.forEach(card => {
+                const price = parseFloat(card.dataset.price);
+                let showCard = false;
+                
+                switch (priceRange) {
+                    case 'under100':
+                        showCard = price < 100;
+                        break;
+                    case '100-500':
+                        showCard = price >= 100 && price <= 500;
+                        break;
+                    case 'over500':
+                        showCard = price > 500;
+                        break;
+                }
+                
+                card.style.display = showCard ? 'block' : 'none';
+            });
+        }
+
+        /**
+         * Load user preferences
+         */
+        function loadUserPreferences() {
+            if (userPreferences.defaultStyle) {
+                document.getElementById('jewelryStyle').value = userPreferences.defaultStyle;
+                currentStyle = userPreferences.defaultStyle;
+            }
+            
+            if (userPreferences.defaultColor) {
+                changeJewelryColor(userPreferences.defaultColor);
+            }
+            
+            if (userPreferences.defaultSize) {
+                document.getElementById('sizeSlider').value = userPreferences.defaultSize;
+                adjustSize(userPreferences.defaultSize);
+            }
+            
+            if (userPreferences.mirrorMode !== undefined) {
+                isMirrorMode = userPreferences.mirrorMode;
+                if (isMirrorMode) {
+                    document.getElementById('mirrorBtn').textContent = '🪞 Mirror: ON';
+                    if (videoElement) videoElement.style.transform = 'scaleX(-1)';
+                }
+            }
+        }
+
+        /**
+         * Save user preferences
+         */
+        function saveUserPreferences() {
+            userPreferences = {
+                defaultStyle: currentStyle,
+                defaultColor: currentColor,
+                defaultSize: jewelrySize,
+                mirrorMode: isMirrorMode,
+                lastUpdated: new Date().toISOString()
+            };
+            localStorage.setItem('jewelryPreferences', JSON.stringify(userPreferences));
+        }
+
+        /**
+         * Enhanced performance monitoring
+         */
+        function updatePerformanceMonitor() {
+            if (!performanceMonitor.enabled) return;
+            
+            performanceMonitor.frameCount++;
+            const now = performance.now();
+            
+            if (now - performanceMonitor.lastTime >= 1000) {
+                performanceMonitor.fps = Math.round((performanceMonitor.frameCount * 1000) / (now - performanceMonitor.lastTime));
+                performanceMonitor.frameCount = 0;
+                performanceMonitor.lastTime = now;
+                
+                // Update memory usage if available
+                if (performance.memory) {
+                    performanceMonitor.memoryUsage = Math.round(performance.memory.usedJSHeapSize / 1048576);
+                }
+                
+                // Update display
+                document.getElementById('fpsDisplay').textContent = performanceMonitor.fps;
+                document.getElementById('memoryDisplay').textContent = performanceMonitor.memoryUsage;
+                
+                // Performance warnings
+                if (performanceMonitor.fps < 15) {
+                    console.warn('Low FPS detected:', performanceMonitor.fps);
+                    showNotification('Performance warning: Low FPS detected', 'warning');
+                }
+                
+                if (performanceMonitor.memoryUsage > 500) {
+                    console.warn('High memory usage:', performanceMonitor.memoryUsage, 'MB');
+                }
+            }
+            
+            requestAnimationFrame(updatePerformanceMonitor);
+        }
+
+        /**
+         * Toggle performance monitor
+         */
+        function togglePerformanceMonitor() {
+            performanceMonitor.enabled = !performanceMonitor.enabled;
+            const indicator = document.getElementById('performanceIndicator');
+            const btn = document.getElementById('perfBtn');
+            
+            if (performanceMonitor.enabled) {
+                indicator.classList.add('show');
+                btn.textContent = '📊 Hide Performance';
+                updatePerformanceMonitor();
+            } else {
+                indicator.classList.remove('show');
+                btn.textContent = '📊 Show Performance';
+            }
+        }
+
+        /**
+         * Enhanced notification system
+         */
+        function showNotification(message, type = 'info', duration = 3000) {
+            const notification = document.getElementById('notification');
+            const content = document.getElementById('notificationContent');
+            
+            // Set notification style based on type
+            const styles = {
+                success: 'linear-gradient(45deg, #56ab2f, #a8e6cf)',
+                error: 'linear-gradient(45deg, #ff6b6b, #ff8e8e)',
+                warning: 'linear-gradient(45deg, #f39c12, #f1c40f)',
+                info: 'linear-gradient(45deg, #4facfe, #00f2fe)'
+            };
+            
+            notification.style.background = styles[type] || styles.info;
+            content.textContent = message;
+            notification.classList.add('show');
+            
+            // Auto-hide notification
+            setTimeout(() => {
+                hideNotification();
+            }, duration);
+        }
+
+        /**
+         * Hide notification
+         */
+        function hideNotification() {
+            document.getElementById('notification').classList.remove('show');
+        }
+
+        // === AI DETECTION SYSTEM (Enhanced from Day 3) ===
+
+        /**
+        * Initialize MediaPipe Face Mesh with error handling
+        */
+        function initializeFaceMesh() {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            loadingIndicator.classList.add('show');
+            loadingIndicator.innerHTML = '<p>🔍 Loading facial recognition AI...</p>';
+    
+            try {
+                if (typeof FaceMesh === 'undefined') {
+                    throw new Error('FaceMesh library not loaded');
+                }
+         
+                faceMesh = new FaceMesh({
+                    locateFile: (file) => {
+                        return `https://unpkg.com/@mediapipe/face_mesh@0.4.1640029074/${file}`;
+                    }
+                });
+        
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.6
+                });
+        
+                faceMesh.onResults(onFaceMeshResults);
+                console.log('✅ FaceMesh initialized successfully');
+        
+            } catch (error) {
+                console.error('FaceMesh initialization failed:', error);
+                loadingIndicator.innerHTML = '<p>⚠️ Face detection unavailable. Basic mode active.</p>';
+                setTimeout(() => {
+                    loadingIndicator.classList.remove('show');
+                    updateStatus('📹 Basic mode ready - Camera will work without AI detection');
+                }, 2000);
+            }
+        }
+        /**
+        * Initialize MediaPipe Hands with error handling
+        */
+        function initializeHands() {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            loadingIndicator.innerHTML = '<p>🤚 Loading hand tracking AI...</p>';
+     
+            try {
+                if (typeof Hands === 'undefined') {
+                    throw new Error('Hands library not loaded');
+                }
+        
+                hands = new Hands({
+                    locateFile: (file) => {
+                        return `https://unpkg.com/@mediapipe/hands@0.4.1640029074/${file}`;
+                    }
+                });
+        
+                hands.setOptions({
+                    maxNumHands: 2,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.6,
+                    minTrackingConfidence: 0.5
+                });
+        
+                hands.onResults(onHandsResults);
+                console.log('✅ Hands initialized successfully');
+        
+                loadingIndicator.classList.remove('show');
+                updateStatus('🎯 AI systems ready! Start camera to begin your jewelry experience');
+        
+            } catch (error) {
+                console.error('Hands initialization failed:', error);
+                loadingIndicator.classList.remove('show');
+                updateStatus('🎯 Ready! Hand tracking unavailable - Face detection will work');
+            }
+        }
+
+        /**
+         * Initialize Three.js
+         */
+        function initializeThreeJS() {
+            console.log('🎨 Initializing 3D rendering system...');
+            
+            scene = new THREE.Scene();
+            
+            const aspect = threeCanvas.clientWidth / threeCanvas.clientHeight;
+            threeCamera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+            threeCamera.position.z = 5;
+            
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: threeCanvas, 
+                alpha: true, 
+                antialias: true 
+            });
+            renderer.setSize(threeCanvas.clientWidth, threeCanvas.clientHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            
+            setupLighting();
+            
+            // --- YENİ EKLENEN KODLAR ---
+            // GLTFLoader'ı THREE kütüphanesinin içinden bulmamız gerekiyor.
+            // Three.js r128 versiyonu için doğru yol bu şekilde.
+            gltfLoader = new THREE.GLTFLoader(); 
+            loadRingModel(); // Yüzük modelini yükleyecek yeni fonksiyonu çağırıyoruz.
+            // --- YENİ KODLARIN SONU ---
+            
+            console.log('✅ 3D rendering system initialized');
+        }
+		
+		function loadRingModel() {
+            if (!gltfLoader) return;
+
+            gltfLoader.load(
+                'one_ring.glb', // 1. Adımda indirdiğin ve klasöre attığın dosyanın adı
+                function (gltf) {
+                    ringModel = gltf.scene;
+                    // Başlangıç boyutunu ve pozisyonunu ayarlıyoruz. Bunları daha sonra değiştirebiliriz.
+                    ringModel.scale.set(0.1, 0.1, 0.1); 
+                    ringModel.position.set(0, 0, 0);
+                    ringModel.visible = false; // Başlangıçta görünmez yapalım
+                    scene.add(ringModel);
+                    console.log('💍 3D ring model loaded successfully!');
+                    showNotification('3D Yüzük Modeli Yüklendi!', 'success');
+                },
+                undefined, // Yükleme ilerlemesi için burayı boş bırakabiliriz
+                function (error) {
+                    console.error('3D Yüzük modeli yüklenirken hata oluştu:', error);
+                    showNotification('3D Yüzük Modeli Yüklenemedi!', 'error');
+                }
+            );
+        }
+
+        /**
+         * Set up realistic lighting
+         */
+        function setupLighting() {
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            
+            directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            const sparkleLight1 = new THREE.PointLight(0xffffff, 0.5, 100);
+            sparkleLight1.position.set(-10, 10, 5);
+            scene.add(sparkleLight1);
+            
+            const sparkleLight2 = new THREE.PointLight(0xffffff, 0.3, 100);
+            sparkleLight2.position.set(10, -10, 5);
+            scene.add(sparkleLight2);
+        }
+
+        /**
+         * Handle face mesh results
+         */
+        function onFaceMeshResults(results) {
+            if (!canvasCtx) return;
+            
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                landmarks = results.multiFaceLandmarks[0];
+                faceDetected = true;
+                drawJewelry();
+                updateDetectionStatus();
+            } else {
+                faceDetected = false;
+                landmarks = null;
+                updateDetectionStatus();
+            }
+            
+            canvasCtx.restore();
+        }
+
+        /**
+         * Handle hand results
+         */
+        function onHandsResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                handLandmarks = results.multiHandLandmarks;
+                handsDetected = true;
+            } else {
+                handLandmarks = null;
+                handsDetected = false;
+            }
+            updateDetectionStatus();
+        }
+
+        /**
+         * Update detection status
+         */
+        function updateDetectionStatus() {
+            if (currentJewelry === 'rings' || currentJewelry === 'bracelet') {
+                if (faceDetected && handsDetected) {
+                    updateStatus(`✨ Perfect! Face & hands detected - ${currentJewelry} applied`);
+                } else if (faceDetected && !handsDetected) {
+                    updateStatus('🤚 Great! Now show your hands for jewelry placement');
+                } else if (!faceDetected && handsDetected) {
+                    updateStatus('👤 Hands detected! Position your face in frame');
+                } else {
+                    updateStatus('🔍 Looking for face and hands...');
+                }
+            } else {
+                if (faceDetected) {
+                    updateStatus(`✨ Perfect! ${currentJewelry.charAt(0).toUpperCase() + currentJewelry.slice(1)} applied`);
+                } else {
+                    updateStatus('👤 Position your face in the frame...');
+                }
+            }
+        }
+
+        // === JEWELRY RENDERING SYSTEM (Enhanced from Day 3) ===
+
+        /**
+         * Main jewelry rendering function
+         */
+        function drawJewelry() {
+            if (!canvasCtx) return;
+            
+            const width = canvasElement.width;
+            const height = canvasElement.height;
+            
+            canvasCtx.globalAlpha = jewelryOpacity / 100;
+            
+            if (isMirrorMode) {
+                canvasCtx.scale(-1, 1);
+                canvasCtx.translate(-width, 0);
+            }
+            
+            switch (currentJewelry) {
+                case 'earrings':
+                    if (landmarks) drawEarrings(landmarks, width, height);
+                    break;
+                case 'necklace':
+                    if (landmarks) drawNecklace(landmarks, width, height);
+                    break;
+                case 'tiara':
+                    if (landmarks) drawTiara(landmarks, width, height);
+                    break;
+                case 'rings':
+                    if (handLandmarks) drawRings(handLandmarks, width, height);
+                    break;
+                case 'bracelet':
+                    if (handLandmarks) drawBracelet(handLandmarks, width, height);
+                    else if (landmarks) drawBracelet(landmarks, width, height);
+                    break;
+            }
+            
+            if (isMirrorMode) {
+                canvasCtx.setTransform(1, 0, 0, 1, 0, 0);
+            }
+        }
+
+        /**
+         * Load and display products from database
+         */
+        function loadProducts() {
+            const productGrid = document.getElementById('productGrid');
+            productGrid.innerHTML = '';
+            
+            // Get all products from database
+            const allProducts = [];
+            Object.values(PRODUCT_DATABASE).forEach(category => {
+                allProducts.push(...category);
+            });
+            
+            // Display products
+            allProducts.forEach(product => {
+                const productCard = createProductCard(product);
+                productGrid.appendChild(productCard);
+            });
+        }
+
+        /**
+         * Create product card element
+         */
+        function createProductCard(product) {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            card.dataset.productId = product.id;
+            card.dataset.category = product.category;
+            card.dataset.price = product.price;
+            
+            // Get material color for product image
+            const materialColor = getMaterialColor(product.material);
+            
+            card.innerHTML = `
+                <div class="product-image" style="background: ${materialColor};">
+                    ${getCategoryIcon(product.category)}
+                </div>
+                <div class="product-name">${product.name}</div>
+                <div class="product-price">${product.price}</div>
+                <div class="product-description">${product.description}</div>
+                <div style="font-size: 0.7rem; color: rgba(255,255,255,0.6); margin-top: 0.3rem;">
+                    ⭐ ${product.rating} (${product.reviews} reviews)
+                    ${!product.inStock ? ' • Out of Stock' : ''}
+                </div>
+                <div class="action-buttons">
+                    <button class="btn-mini btn-wishlist" onclick="toggleWishlist('${product.id}')" title="Add to Wishlist">
+                        ${wishlist.includes(product.id) ? '❤️' : '🤍'}
+                    </button>
+                    <button class="btn-mini btn-cart" onclick="addToCart('${product.id}')" ${!product.inStock ? 'disabled' : ''} title="Add to Cart">
+                        🛒
+                    </button>
+                    <button class="btn-mini btn-primary" onclick="tryOnProduct('${product.id}')" style="background: rgba(79,172,254,0.8);" title="Try On">
+                        👁️
+                    </button>
+                </div>
+            `;
+            
+            return card;
+        }
+
+        /**
+         * Get material gradient color
+         */
+        function getMaterialColor(material) {
+            const colors = {
+                gold: 'linear-gradient(45deg, #FFD700, #FFA500)',
+                silver: 'linear-gradient(45deg, #C0C0C0, #E5E5E5)',
+                'rose-gold': 'linear-gradient(45deg, #E8B4B8, #D4A574)',
+                platinum: 'linear-gradient(45deg, #E5E4E2, #BCC6CC)'
+            };
+            return colors[material] || colors.gold;
+        }
+
+        /**
+         * Get category icon
+         */
+        function getCategoryIcon(category) {
+            const icons = {
+                earrings: '💎',
+                necklace: '📿',
+                rings: '💍',
+                tiara: '👑',
+                bracelet: '⌚'
+            };
+            return icons[category] || '💎';
+        }
+
+        /**
+         * Try on a specific product
+         */
+        function tryOnProduct(productId) {
+            const allProducts = [];
+            Object.values(PRODUCT_DATABASE).forEach(category => {
+                allProducts.push(...category);
+            });
+            
+            const product = allProducts.find(p => p.id === productId);
+            if (!product) return;
+            
+            // Update selection
+            currentJewelry = product.category;
+            currentStyle = product.style;
+            currentColor = product.material;
+            currentProductId = productId;
+            
+            // Update UI
+            selectJewelry(product.category);
+            document.getElementById('jewelryStyle').value = product.style;
+            changeJewelryColor(product.material);
+            
+            // Highlight product
+            document.querySelectorAll('.product-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.querySelector(`[data-product-id="${productId}"]`).classList.add('selected');
+            
+            showNotification(`Now trying on: ${product.name}`, 'success');
+        }
+
+        /**
+         * Enhanced photo capture with product information
+         */
+        function capturePhoto() {
+            if (!videoElement.videoWidth) {
+                showNotification('No video feed available for capture', 'error');
+                return;
+            }
+            
+            const captureCanvas = document.createElement('canvas');
+            const captureCtx = captureCanvas.getContext('2d');
+            
+            captureCanvas.width = videoElement.videoWidth;
+            captureCanvas.height = videoElement.videoHeight;
+            
+            // Draw video frame
+            captureCtx.drawImage(videoElement, 0, 0);
+            
+            // Draw jewelry overlay
+            if (landmarks || handLandmarks) {
+                captureCtx.globalAlpha = jewelryOpacity / 100;
+                captureCtx.filter = `brightness(${jewelryBrightness}%)`;
+                
+                const originalCtx = canvasCtx;
+                canvasCtx = captureCtx;
+                drawJewelry();
+                canvasCtx = originalCtx;
+            }
+            
+            // Add watermark with product info
+            if (currentProductId) {
+                const allProducts = [];
+                Object.values(PRODUCT_DATABASE).forEach(category => {
+                    allProducts.push(...category);
+                });
+                const product = allProducts.find(p => p.id === currentProductId);
+                if (product) {
+                    captureCtx.globalAlpha = 1;
+                    captureCtx.filter = 'none';
+                    captureCtx.fillStyle = 'rgba(0,0,0,0.7)';
+                    captureCtx.fillRect(10, captureCanvas.height - 60, 300, 50);
+                    captureCtx.fillStyle = 'white';
+                    captureCtx.font = '16px Arial';
+                    captureCtx.fillText(`${product.name} - ${product.price}`, 20, captureCanvas.height - 35);
+                    captureCtx.font = '12px Arial';
+                    captureCtx.fillText('Virtual Jewelry Try-On', 20, captureCanvas.height - 15);
+                }
+            }
+            
+            // Save photo
+            const photoData = {
+                id: Date.now(),
+                dataURL: captureCanvas.toDataURL(),
+                timestamp: new Date().toISOString(),
+                product: currentProductId ? {
+                    id: currentProductId,
+                    name: PRODUCT_DATABASE[currentJewelry].find(p => p.id === currentProductId)?.name || 'Unknown',
+                    category: currentJewelry,
+                    style: currentStyle,
+                    color: currentColor
+                } : null,
+                settings: {
+                    size: jewelrySize,
+                    opacity: jewelryOpacity,
+                    brightness: jewelryBrightness
+                }
+            };
+            
+            savedPhotos.unshift(photoData);
+            if (savedPhotos.length > 50) savedPhotos = savedPhotos.slice(0, 50); // Keep only 50 photos
+            
+            localStorage.setItem('jewelryTryOnPhotos', JSON.stringify(savedPhotos));
+            displaySavedPhotos();
+            
+            // Download photo
+            const link = document.createElement('a');
+            link.download = `jewelry-tryout-${Date.now()}.png`;
+            link.href = photoData.dataURL;
+            link.click();
+            
+            showNotification('📸 Photo captured and saved!', 'success');
+        }
+
+        /**
+         * Display saved photos gallery
+         */
+        function displaySavedPhotos() {
+            const gallery = document.getElementById('photosGallery');
+            gallery.innerHTML = '';
+            
+            savedPhotos.slice(0, 12).forEach(photo => {
+                const photoElement = document.createElement('div');
+                photoElement.className = 'saved-photo';
+                photoElement.innerHTML = `
+                    <img src="${photo.dataURL}" alt="Saved photo" onclick="viewSavedPhoto('${photo.id}')">
+                    <div class="photo-date">${new Date(photo.timestamp).toLocaleDateString()}</div>
+                `;
+                gallery.appendChild(photoElement);
+            });
+            
+            if (savedPhotos.length === 0) {
+                gallery.innerHTML = '<p style="color: rgba(255,255,255,0.7); text-align: center; font-size: 0.8rem;">No saved photos yet</p>';
+            }
+        }
+
+        /**
+         * View saved photo in detail
+         */
+        function viewSavedPhoto(photoId) {
+            const photo = savedPhotos.find(p => p.id == photoId);
+            if (!photo) return;
+            
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.9); z-index: 10000; display: flex;
+                align-items: center; justify-content: center; padding: 2rem;
+            `;
+            
+            modal.innerHTML = `
+                <div style="background: white; border-radius: 12px; padding: 1.5rem; max-width: 90vw; max-height: 90vh; overflow: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3>Saved Photo</h3>
+                        <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                                style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">×</button>
+                    </div>
+                    <img src="${photo.dataURL}" style="max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 1rem;">
+                    <div style="font-size: 0.9rem; color: #666;">
+                        <p><strong>Date:</strong> ${new Date(photo.timestamp).toLocaleString()}</p>
+                        ${photo.product ? `<p><strong>Product:</strong> ${photo.product.name}</p>` : ''}
+                        <p><strong>Settings:</strong> Size: ${photo.settings.size}%, Opacity: ${photo.settings.opacity}%, Brightness: ${photo.settings.brightness}%</p>
+                    </div>
+                    <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+                        <button onclick="downloadPhoto('${photo.id}')" 
+                                style="background: #4facfe; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">
+                            📥 Download
+                        </button>
+                        <button onclick="deleteSavedPhoto('${photo.id}'); this.parentElement.parentElement.parentElement.remove();" 
+                                style="background: #ff6b6b; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">
+                            🗑️ Delete
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+        }
+
+        /**
+         * Download saved photo
+         */
+        function downloadPhoto(photoId) {
+            const photo = savedPhotos.find(p => p.id == photoId);
+            if (!photo) return;
+            
+            const link = document.createElement('a');
+            link.download = `jewelry-photo-${photo.id}.png`;
+            link.href = photo.dataURL;
+            link.click();
+        }
+
+        /**
+         * Delete saved photo
+         */
+        function deleteSavedPhoto(photoId) {
+            savedPhotos = savedPhotos.filter(p => p.id != photoId);
+            localStorage.setItem('jewelryTryOnPhotos', JSON.stringify(savedPhotos));
+            displaySavedPhotos();
+            showNotification('Photo deleted', 'info');
+        }
+
+        /**
+         * Clear all saved photos
+         */
+        function clearSavedPhotos() {
+            if (confirm('Are you sure you want to delete all saved photos?')) {
+                savedPhotos = [];
+                localStorage.setItem('jewelryTryOnPhotos', JSON.stringify(savedPhotos));
+                displaySavedPhotos();
+                showNotification('All photos cleared', 'info');
+            }
+        }
+
+        /**
+         * Toggle wishlist item
+         */
+        function toggleWishlist(productId) {
+            if (wishlist.includes(productId)) {
+                wishlist = wishlist.filter(id => id !== productId);
+                showNotification('Removed from wishlist', 'info');
+            } else {
+                wishlist.push(productId);
+                showNotification('Added to wishlist ❤️', 'success');
+            }
+            
+            localStorage.setItem('jewelryWishlist', JSON.stringify(wishlist));
+            updateWishlistDisplay();
+            loadProducts(); // Refresh to update heart icons
+        }
+
+        /**
+         * Add item to cart
+         */
+        function addToCart(productId) {
+            const existingItem = cart.find(item => item.id === productId);
+            
+            if (existingItem) {
+                existingItem.quantity += 1;
+                showNotification('Quantity updated in cart', 'success');
+            } else {
+                cart.push({ id: productId, quantity: 1 });
+                showNotification('Added to cart 🛒', 'success');
+            }
+            
+            localStorage.setItem('jewelryCart', JSON.stringify(cart));
+            updateCartDisplay();
+        }
+
+        /**
+         * Update wishlist display
+         */
+        function updateWishlistDisplay() {
+            const wishlistContainer = document.getElementById('wishlistItems');
+            
+            if (wishlist.length === 0) {
+                wishlistContainer.innerHTML = '<p style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Add items to your wishlist by clicking the heart icon</p>';
+                return;
+            }
+            
+            const allProducts = [];
+            Object.values(PRODUCT_DATABASE).forEach(category => {
+                allProducts.push(...category);
+            });
+            
+            const wishlistHTML = wishlist.map(productId => {
+                const product = allProducts.find(p => p.id === productId);
+                if (!product) return '';
+                
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.1); padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem;">
+                        <div>
+                            <div style="color: white; font-size: 0.8rem; font-weight: bold;">${product.name}</div>
+                            <div style="color: #4facfe; font-size: 0.7rem;">${product.price}</div>
+                        </div>
+                        <div>
+                            <button onclick="tryOnProduct('${product.id}')" style="background: none; border: none; color: white; cursor: pointer; margin-right: 0.5rem;" title="Try On">👁️</button>
+                            <button onclick="toggleWishlist('${product.id}')" style="background: none; border: none; color: #ff6b6b; cursor: pointer;" title="Remove">❤️</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            wishlistContainer.innerHTML = wishlistHTML;
+        }
+
+        /**
+         * Update cart display
+         */
+        function updateCartDisplay() {
+            const cartContainer = document.getElementById('cartItems');
+            const checkoutBtn = document.getElementById('checkoutBtn');
+            
+            if (cart.length === 0) {
+                cartContainer.innerHTML = '<p style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Add items to cart for purchase</p>';
+                checkoutBtn.disabled = true;
+                checkoutBtn.textContent = '🛒 Checkout ($0.00)';
+                return;
+            }
+            
+const allProducts = [];
+            Object.values(PRODUCT_DATABASE).forEach(category => {
+                allProducts.push(...category);
+            });
+            
+            let total = 0;
+            
+            const cartHTML = cart.map(cartItem => {
+                const product = allProducts.find(p => p.id === cartItem.id);
+                if (!product) return '';
+                
+                const itemTotal = product.price * cartItem.quantity;
+                total += itemTotal;
+                
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.1); padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem;">
+                        <div>
+                            <div style="color: white; font-size: 0.8rem; font-weight: bold;">${product.name}</div>
+                            <div style="color: #4facfe; font-size: 0.7rem;">$${product.price} × ${cartItem.quantity}</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <button onclick="updateCartQuantity('${product.id}', -1)" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 0.7rem;">−</button>
+                            <span style="color: white; font-size: 0.8rem; min-width: 20px; text-align: center;">${cartItem.quantity}</span>
+                            <button onclick="updateCartQuantity('${product.id}', 1)" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 0.7rem;">+</button>
+                            <button onclick="removeFromCart('${product.id}')" style="background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 0.8rem;" title="Remove">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            cartContainer.innerHTML = cartHTML;
+            checkoutBtn.disabled = false;
+            checkoutBtn.textContent = `🛒 Checkout ($${total.toFixed(2)})`;
+        }
+
+        /**
+         * Start camera function
+         */
+        function startCamera() {
+            const cameraBtn = document.getElementById('cameraBtn');
+            const captureBtn = document.getElementById('captureBtn');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            
+            cameraBtn.disabled = true;
+            cameraBtn.textContent = '🔄 Starting...';
+            loadingIndicator.classList.add('show');
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: 640, 
+                    height: 480, 
+                    facingMode: 'user' 
+                } 
+            })
+            .then(stream => {
+                videoElement.srcObject = stream;
+                videoElement.onloadedmetadata = () => {
+                    setupResponsiveCanvas();
+                    startDetection();
+                    
+                    cameraBtn.textContent = '📹 Camera Active';
+                    cameraBtn.disabled = false;
+                    captureBtn.disabled = false;
+                    loadingIndicator.classList.remove('show');
+                    updateStatus('✨ Camera active! Position yourself in frame');
+                };
+            })
+            .catch(error => {
+                console.error('Camera error:', error);
+                cameraBtn.textContent = '📹 Start Camera';
+                cameraBtn.disabled = false;
+                loadingIndicator.classList.remove('show');
+                updateStatus('❌ Camera access denied. Please allow camera permissions.');
+                showNotification('Camera access required for virtual try-on', 'error');
+            });
+        }
+
+        /**
+         * Select jewelry type
+         */
+        function selectJewelry(type) {
+            currentJewelry = type;
+            currentProductId = null;
+            
+            // Update UI
+            document.querySelectorAll('.jewelry-item').forEach(item => {
+                item.classList.remove('active', 'premium-glow');
+                if (item.dataset.type === type) {
+                    item.classList.add('active', 'premium-glow');
+                }
+            });
+            
+            // Clear product selection
+            document.querySelectorAll('.product-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            updateStatus(`💎 Selected: ${type.charAt(0).toUpperCase() + type.slice(1)}`);
+            showNotification(`Now trying: ${type}`, 'info');
+        }
+
+        /**
+         * Filter products function
+         */
+        function filterProducts(category) {
+            const productCards = document.querySelectorAll('.product-card');
+            const filterChips = document.querySelectorAll('.filter-chip[data-filter]');
+            
+            // Update active filter chip
+            filterChips.forEach(chip => chip.classList.remove('active'));
+            document.querySelector(`[data-filter="${category}"]`).classList.add('active');
+            
+            // Show/hide products
+            productCards.forEach(card => {
+                if (category === 'all' || card.dataset.category === category) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        /**
+         * Helper functions
+         */
+        function startDetection() {
+            if (faceMesh && hands && videoElement.videoWidth > 0) {
+                processFrame();
+            }
+        }
+
+        function processFrame() {
+            if (videoElement.videoWidth > 0) {
+                faceMesh.send({ image: videoElement });
+                hands.send({ image: videoElement });
+            }
+            requestAnimationFrame(processFrame);
+        }
+
+        function setupResponsiveCanvas() {
+            if (videoElement.videoWidth && videoElement.videoHeight) {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                
+                const aspect = videoElement.videoWidth / videoElement.videoHeight;
+                threeCamera.aspect = aspect;
+                threeCamera.updateProjectionMatrix();
+                renderer.setSize(videoElement.videoWidth, videoElement.videoHeight);
+            }
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').innerHTML = message;
+        }
+
+        function drawEarrings(landmarks, width, height) {
+            if (!landmarks) return;
+            
+            const leftEar = landmarks[234];
+            const rightEar = landmarks[454];
+            const earringSize = (jewelrySize / 100) * 30;
+            
+            drawJewelryShape(leftEar.x * width, leftEar.y * height + 20, earringSize, 'earring');
+            drawJewelryShape(rightEar.x * width, rightEar.y * height + 20, earringSize, 'earring');
+        }
+
+        function drawNecklace(landmarks, width, height) {
+            if (!landmarks) return;
+            const neckCenter = landmarks[10];
+            const neckSize = (jewelrySize / 100) * 80;
+            drawJewelryShape(neckCenter.x * width, neckCenter.y * height + 60, neckSize, 'necklace');
+        }
+
+        function drawTiara(landmarks, width, height) {
+            if (!landmarks) return;
+            const forehead = landmarks[10];
+            const tiaraSize = (jewelrySize / 100) * 60;
+            drawJewelryShape(forehead.x * width, forehead.y * height - 40, tiaraSize, 'tiara');
+        }
+
+        function drawRings(handLandmarks, width, height) {
+		    renderer.clear(); // sahneyi temizle
+            // 1. Gerekli her şeyin hazır olup olmadığını kontrol et
+            if (!ringModel || !handLandmarks || handLandmarks.length === 0) {
+                if(ringModel) ringModel.visible = false; // Eğer el görünmüyorsa yüzüğü sakla
+                renderer.render(scene, threeCamera); // Sahneyi yine de render et
+                return;
+            }
+
+            // 2. Yüzük parmağının kökündeki noktanın koordinatlarını al (landmark index 13)
+            const ringFingerBase = handLandmarks[0][13]; 
+    
+            // 3. MediaPipe'ın 2D koordinatlarını Three.js'in 3D dünyasına çevir
+            const vector = new THREE.Vector3(
+                (ringFingerBase.x * 2 - 1) * (width / height), 
+                -(ringFingerBase.y * 2 - 1), 
+                0.5
+            );
+            vector.unproject(threeCamera);
+            const dir = vector.sub(threeCamera.position).normalize();
+            const distance = -threeCamera.position.z / dir.z;
+            const pos = threeCamera.position.clone().add(dir.multiplyScalar(distance));
+
+            // 4. Modelin pozisyonunu, boyutunu ve açısını güncelle
+            ringModel.position.copy(pos);
+            ringModel.position.x *= -1; // Kameranın ayna görüntüsü için x eksenini ters çevir
+    
+            // Yüzüğün doğru görünmesi için bazı ince ayarlar (bu değerlerle oynayabilirsiniz)
+            ringModel.rotation.z = Math.PI / 1.5; // Yüzüğün açısını ayarla
+            ringModel.rotation.x = Math.PI / 2; // Yüzüğü biraz bize doğru çevir
+            ringModel.scale.set(0.05, 0.05, 0.05); // Yüzüğün boyutunu ayarla (çok büyük veya küçükse bu sayıları değiştir)
+            
+			// 5. Modeli görünür yap ve sahneyi render et
+            ringModel.visible = true;
+            renderer.render(scene, threeCamera);
+        }
+
+        function drawBracelet(landmarks, width, height) {
+            if (handLandmarks) {
+                handLandmarks.forEach(hand => {
+                    const wrist = hand[0];
+                    const braceletSize = (jewelrySize / 100) * 25;
+                    drawJewelryShape(wrist.x * width, wrist.y * height + 30, braceletSize, 'bracelet');
+                });
+            }
+        }
+
+        function drawJewelryShape(x, y, size, type) {
+            const gradient = canvasCtx.createRadialGradient(x, y, 0, x, y, size);
+            
+            switch(currentColor) {
+                case 'gold':
+                    gradient.addColorStop(0, '#FFD700');
+                    gradient.addColorStop(1, '#B8860B');
+                    break;
+                case 'silver':
+                    gradient.addColorStop(0, '#E5E5E5');
+                    gradient.addColorStop(1, '#A0A0A0');
+                    break;
+                case 'rose-gold':
+                    gradient.addColorStop(0, '#E8B4B8');
+                    gradient.addColorStop(1, '#D4A574');
+                    break;
+                case 'platinum':
+                    gradient.addColorStop(0, '#E5E4E2');
+                    gradient.addColorStop(1, '#BCC6CC');
+                    break;
+            }
+            
+            canvasCtx.fillStyle = gradient;
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, size, 0, 2 * Math.PI);
+            canvasCtx.fill();
+            
+            canvasCtx.fillStyle = `rgba(255, 255, 255, ${jewelryOpacity / 200})`;
+            canvasCtx.beginPath();
+            canvasCtx.arc(x - size/3, y - size/3, size/4, 0, 2 * Math.PI);
+            canvasCtx.fill();
+        }
+
+        function changeJewelryColor(color) {
+            currentColor = color;
+            document.querySelectorAll('.color-option').forEach(option => {
+                option.classList.remove('active');
+            });
+            document.querySelector(`.color-option.${color}`).classList.add('active');
+        }
+
+        function adjustSize(value) {
+            jewelrySize = parseInt(value);
+            document.getElementById('sizeValue').textContent = value + '%';
+        }
+
+        function adjustOpacity(value) {
+            jewelryOpacity = parseInt(value);
+            document.getElementById('opacityValue').textContent = value + '%';
+        }
+
+        function adjustBrightness(value) {
+            jewelryBrightness = parseInt(value);
+            document.getElementById('brightnessValue').textContent = value + '%';
+        }
+
+        function resetToDefaults() {
+            jewelrySize = 100;
+            jewelryOpacity = 85;
+            jewelryBrightness = 100;
+            
+            document.getElementById('sizeSlider').value = 100;
+            document.getElementById('opacitySlider').value = 85;
+            document.getElementById('brightnessSlider').value = 100;
+            
+            adjustSize(100);
+            adjustOpacity(85);
+            adjustBrightness(100);
+        }
+
+        function toggleMirrorMode() {
+            isMirrorMode = !isMirrorMode;
+            const btn = document.getElementById('mirrorBtn');
+            btn.textContent = isMirrorMode ? '🪞 Mirror: ON' : '🪞 Mirror Mode';
+            
+            if (videoElement) {
+                videoElement.style.transform = isMirrorMode ? 'scaleX(-1)' : 'scaleX(1)';
+            }
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            showNotification('Photo upload feature coming soon!', 'info');
+        }
+
+        function changeJewelryStyle() {
+            const style = document.getElementById('jewelryStyle').value;
+            currentStyle = style;
+            showNotification(`Style changed to: ${style}`, 'info');
+        }
+
+        // Initialize app when page loads
+        document.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
