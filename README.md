@@ -46,7 +46,7 @@ Virtual Jewelry Try-On is an AI-powered web application that allows users to vir
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/[your-username]/virtual-jewelry-try-on.git
+git clone https://github.com/Edanurseymen/jewelry-tryit-on-AI
 cd virtual-jewelry-try-on
 ```
 
@@ -185,7 +185,7 @@ Virtual Jewelry Try-On, kullanıcıların kameralarını kullanarak farklı müc
 
 1. **Repoyu klonlayın**
 ```bash
-git clone https://github.com/[kullanici-adi]/virtual-jewelry-try-on.git
+git clone https://github.com/Edanurseymen/jewelry-tryit-on-AI
 cd virtual-jewelry-try-on
 ```
 
@@ -287,7 +287,7 @@ Bu proje AI-First Capstone programının bir parçasıdır ve eğitim amaçlıd�
 
 ### 📞 İletişim
 
-Proje hakkında sorularınız için [GitHub Issues](https://github.com/[kullanici-adi]/virtual-jewelry-try-on/issues) bölümünü kullanabilirsiniz.
+Proje hakkında sorularınız için [GitHub Issues]( https://github.com/Edanurseymen/jewelry-tryit-on-AI/issues) bölümünü kullanabilirsiniz.
 
-**Demo**: [Canlı Demo Linki](https://your-demo-link.com)
-**Video**: [Demo Videosu](https://your-video-link.com)
+**Demo**: [Canlı Demo Linki](https://jewelry-tryit-on-ai.vercel.app/)
+**Video**: [Demo Videosu](-)
